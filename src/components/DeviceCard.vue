@@ -1,4 +1,6 @@
 <script setup>
+import { ref } from 'vue'
+
 defineProps({
   deviceId: {
     type: String,
@@ -7,6 +9,10 @@ defineProps({
   device: {
     type: Object,
     required: true,
+  },
+  timer: {
+    type: Object,
+    default: null,
   },
   busy: {
     type: Boolean,
@@ -18,7 +24,12 @@ defineProps({
   },
 })
 
-defineEmits(['toggle', 'brightness-change'])
+const emit = defineEmits(['toggle', 'brightness-change', 'set-timer', 'cancel-timer'])
+
+const showTimerConfig = ref(false)
+const timerMinutes = ref(5)
+const timerAction = ref('toggle')
+const timerBrightness = ref(50)
 
 function formatUpdatedAt(timestamp) {
   if (!timestamp) {
@@ -29,6 +40,37 @@ function formatUpdatedAt(timestamp) {
     dateStyle: 'short',
     timeStyle: 'short',
   }).format(new Date(timestamp))
+}
+
+function formatTimeRemaining(remainingMs) {
+  if (remainingMs <= 0) return '0'
+  const minutes = Math.floor(remainingMs / 60000)
+  const seconds = Math.floor((remainingMs % 60000) / 1000)
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
+function handleSetTimer() {
+  const minutes = Number(timerMinutes.value)
+  if (minutes <= 0 || minutes > 1440) {
+    return
+  }
+
+  const payload = {
+    action: timerAction.value,
+    durationMs: minutes * 60000,
+  }
+
+  if (timerAction.value === 'brightness') {
+    payload.brightness = Number(timerBrightness.value)
+  }
+
+  emit('set-timer', payload)
+  showTimerConfig.value = false
+}
+
+function handleCancelTimer() {
+  emit('cancel-timer')
+  showTimerConfig.value = false
 }
 </script>
 
@@ -69,7 +111,78 @@ function formatUpdatedAt(timestamp) {
     <button class="toggle-btn" :disabled="busy || disabled" @click="!disabled && $emit('toggle')">
       {{ device.isOn ? 'Vypnúť' : 'Zapnúť' }}
     </button>
-  </article>
+    <details class="timer-section">
+      <summary class="timer-summary">
+        <span>⏲️ Časovač</span>
+        <span v-if="timer" class="timer-badge">
+          {{ formatTimeRemaining(timer.remainingMs) }}
+        </span>
+      </summary>
+
+      <div class="timer-content">
+        <div v-if="timer" class="timer-active">
+          <p class="timer-info">
+            <strong>Časovač aktívny:</strong> {{ timer.actionLabel }}
+            za {{ formatTimeRemaining(timer.remainingMs) }}
+          </p>
+          <button class="danger-btn" type="button" @click="handleCancelTimer">
+            Zrušiť časovač
+          </button>
+        </div>
+
+        <div v-else class="timer-form">
+          <label for="timer-minutes-{{ deviceId }}">
+            <span>Čas (minúty):</span>
+            <input
+              :id="`timer-minutes-${deviceId}`"
+              v-model.number="timerMinutes"
+              type="number"
+              min="1"
+              max="1440"
+              :disabled="busy || disabled"
+            />
+          </label>
+
+          <label for="timer-action-{{ deviceId }}">
+            <span>Akcia:</span>
+            <select
+              :id="`timer-action-${deviceId}`"
+              v-model="timerAction"
+              :disabled="busy || disabled"
+            >
+              <option value="toggle">Prepnúť stav ({{ device.isOn ? 'Vypnúť' : 'Zapnúť' }})</option>
+              <option value="on">Zapnúť</option>
+              <option value="off">Vypnúť</option>
+              <option v-if="device.supportsBrightness" value="brightness">Nastaviť jas</option>
+            </select>
+          </label>
+
+          <label v-if="timerAction === 'brightness' && device.supportsBrightness" for="timer-brightness-{{ deviceId }}">
+            <span>Jas (%):</span>
+            <div class="brightness-input-row">
+              <input
+                :id="`timer-brightness-${deviceId}`"
+                v-model.number="timerBrightness"
+                type="range"
+                min="0"
+                max="100"
+                :disabled="busy || disabled"
+              />
+              <strong>{{ timerBrightness }}%</strong>
+            </div>
+          </label>
+
+          <button
+            class="primary-btn"
+            type="button"
+            :disabled="busy || disabled || timerMinutes <= 0"
+            @click="handleSetTimer"
+          >
+            Nastaviť časovač
+          </button>
+        </div>
+      </div>
+    </details>  </article>
 </template>
 
 <style scoped>
@@ -185,5 +298,135 @@ h3 {
 .toggle-btn:disabled {
   cursor: not-allowed;
   opacity: 0.6;
+}
+
+.timer-section {
+  border-top: 1px solid #e0f0f5;
+  padding-top: 1rem;
+}
+
+.timer-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  color: #1f7a8c;
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 0.5rem 0;
+  user-select: none;
+}
+
+.timer-summary:hover {
+  opacity: 0.8;
+}
+
+.timer-badge {
+  background: #1f7a8c;
+  color: white;
+  border-radius: 999px;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.timer-content {
+  padding-top: 0.75rem;
+}
+
+.timer-active {
+  display: grid;
+  gap: 0.75rem;
+  background: #f0f8fa;
+  border: 1px solid #d5e8ed;
+  border-radius: 10px;
+  padding: 0.75rem;
+}
+
+.timer-info {
+  margin: 0;
+  color: #1f7a8c;
+  font-size: 0.95rem;
+}
+
+.timer-form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.timer-form label {
+  display: grid;
+  gap: 0.35rem;
+  color: #365268;
+  font-size: 0.9rem;
+}
+
+.timer-form span {
+  font-weight: 600;
+}
+
+.timer-form input[type='number'],
+.timer-form select {
+  border: 1px solid #c5dce4;
+  border-radius: 8px;
+  padding: 0.5rem;
+  font-size: 0.95rem;
+  color: #365268;
+}
+
+.timer-form input[type='number']:disabled,
+.timer-form select:disabled {
+  background: #f5f5f5;
+  cursor: not-allowed;
+}
+
+.brightness-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.brightness-input-row input {
+  flex: 1;
+  accent-color: #1f7a8c;
+}
+
+.brightness-input-row strong {
+  min-width: 3rem;
+  text-align: right;
+  font-size: 0.9rem;
+}
+
+.primary-btn {
+  border: none;
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: white;
+  background: linear-gradient(120deg, #1f7a8c, #1d4f77);
+  font-size: 0.95rem;
+  transition: opacity 0.2s;
+}
+
+.primary-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.primary-btn:not(:disabled):hover {
+  opacity: 0.9;
+}
+
+.danger-btn {
+  border: none;
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: white;
+  background: #c85a5a;
+  font-size: 0.95rem;
+  transition: opacity 0.2s;
 }
 </style>

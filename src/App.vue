@@ -5,7 +5,7 @@ import {
   signInWithEmailAndPassword,
   signOut,
 } from 'firebase/auth'
-import { onValue, ref as dbRef, update } from 'firebase/database'
+import { onValue, ref as dbRef, update, remove } from 'firebase/database'
 import DeviceCard from './components/DeviceCard.vue'
 import ConsumptionChart from './components/ConsumptionChart.vue'
 import { auth, db, isFirebaseConfigured, useMockData } from './firebase'
@@ -74,6 +74,7 @@ let authUnsubscribe = null
 const dbUnsubscribers = []
 let mockInterval = null
 let clockInterval = null
+let timerCheckInterval = null
 
 const isLoggedIn = computed(() => !!user.value)
 const signedInEmail = computed(() => user.value?.email || 'Neznáme konto')
@@ -135,6 +136,21 @@ function normalizeBrightness(value) {
 
 function getDefaultDeviceState(deviceId, value = {}) {
   const config = DEVICE_CONFIG[deviceId]
+  const scheduledAction = value.scheduledAction || null
+
+  let timerInfo = null
+  if (scheduledAction?.executeAtMs) {
+    const remaining = scheduledAction.executeAtMs - Date.now()
+    if (remaining > 0) {
+      timerInfo = {
+        action: scheduledAction.action,
+        brightness: scheduledAction.brightness || null,
+        executeAtMs: scheduledAction.executeAtMs,
+        remainingMs: remaining,
+        actionLabel: getActionLabel(scheduledAction.action, { isOn: value.isOn }, scheduledAction.brightness),
+      }
+    }
+  }
 
   return {
     name: value.name || config.name,
@@ -143,6 +159,7 @@ function getDefaultDeviceState(deviceId, value = {}) {
     brightness: config.supportsBrightness ? normalizeBrightness(value.brightness) : 0,
     supportsBrightness: config.supportsBrightness,
     updatedAt: Number(value.updatedAt) || 0,
+    scheduledAction: timerInfo,
   }
 }
 
@@ -401,10 +418,101 @@ async function updateBrightness(deviceId, brightness) {
   }
 }
 
+function getActionLabel(action, device, brightness = null) {
+  switch (action) {
+    case 'toggle':
+      return device.isOn ? 'Vypnúť' : 'Zapnúť'
+    case 'on':
+      return 'Zapnúť'
+    case 'off':
+      return 'Vypnúť'
+    case 'brightness':
+      return `Jas: ${brightness}%`
+    default:
+      return 'Akcia'
+  }
+}
+
+async function executeTimerAction(deviceId, action, brightness = null) {
+  const device = devices[deviceId]
+
+  switch (action) {
+    case 'toggle':
+      await toggleDevice(deviceId)
+      break
+    case 'on':
+      if (!device.isOn) {
+        await toggleDevice(deviceId)
+      }
+      break
+    case 'off':
+      if (device.isOn) {
+        await toggleDevice(deviceId)
+      }
+      break
+    case 'brightness':
+      if (brightness !== null) {
+        await updateBrightness(deviceId, brightness)
+      }
+      break
+    default:
+      console.warn('Unknown timer action:', action)
+  }
+}
+
+function setDeviceTimer(deviceId, action, durationMs, brightness = null) {
+  const executeAtMs = Date.now() + durationMs
+
+  const payload = {
+    scheduledAction: {
+      action,
+      executeAtMs,
+    },
+  }
+
+  if (brightness !== null) {
+    payload.scheduledAction.brightness = brightness
+  }
+
+  return update(dbRef(db, `devices/${deviceId}`), payload)
+}
+
+function cancelDeviceTimer(deviceId) {
+  return remove(dbRef(db, `devices/${deviceId}/scheduledAction`))
+}
+
+async function checkAndExecuteScheduledActions() {
+  const now = Date.now()
+
+  for (const deviceId of DEVICE_IDS) {
+    const device = devices[deviceId]
+    if (!device.scheduledAction) {
+      continue
+    }
+
+    const { executeAtMs, action, brightness } = device.scheduledAction
+
+    if (executeAtMs <= now) {
+      // Čas spustiť akciu
+      await executeTimerAction(deviceId, action, brightness)
+
+      // Zmaž scheduledAction z Firebase
+      await remove(dbRef(db, `devices/${deviceId}/scheduledAction`))
+    } else {
+      // Aktualizuj remaining čas
+      device.scheduledAction.remainingMs = executeAtMs - now
+    }
+  }
+}
+
 onMounted(() => {
   clockInterval = setInterval(() => {
     clockNow.value = Date.now()
   }, 60000)
+
+  timerCheckInterval = setInterval(() => {
+    checkAndExecuteScheduledActions()
+  }, 500)
 
   if (useMockData) {
     startMockMode()
@@ -438,6 +546,10 @@ onUnmounted(() => {
 
   if (clockInterval) {
     clearInterval(clockInterval)
+  }
+
+  if (timerCheckInterval) {
+    clearInterval(timerCheckInterval)
   }
 
   clearRealtimeListeners()
@@ -532,10 +644,13 @@ onUnmounted(() => {
             :key="deviceId"
             :device-id="deviceId"
             :device="devices[deviceId]"
+            :timer="devices[deviceId].scheduledAction"
             :busy="actionBusy || !telemetryHealthy"
             :disabled="!telemetryHealthy"
             @toggle="toggleDevice(deviceId)"
             @brightness-change="updateBrightness(deviceId, $event)"
+            @set-timer="setDeviceTimer(deviceId, $event.action, $event.durationMs, $event.brightness)"
+            @cancel-timer="cancelDeviceTimer(deviceId)"
           />
         </div>
       </section>
