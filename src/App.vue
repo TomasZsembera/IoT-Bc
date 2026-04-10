@@ -81,15 +81,15 @@ const signedInEmail = computed(() => user.value?.email || 'Neznáme konto')
 const latestTelemetryTimestamp = computed(() => {
   return Math.max(...DEVICE_IDS.map((deviceId) => devices[deviceId].updatedAt || 0), 0)
 })
-const telemetryAgeMinutes = computed(() => {
+const telemetryAgeSeconds = computed(() => {
   if (!latestTelemetryTimestamp.value) {
     return null
   }
 
-  return Math.round((clockNow.value - latestTelemetryTimestamp.value) / 60000)
+  return Math.round((clockNow.value - latestTelemetryTimestamp.value) / 1000)
 })
 const telemetryHealthy = computed(() => {
-  return latestTelemetryTimestamp.value && (telemetryAgeMinutes.value || 0) <= 20
+  return latestTelemetryTimestamp.value && (telemetryAgeSeconds.value || 0) <= 15
 })
 const telemetryHealthyLabel = computed(() => {
   if (!latestTelemetryTimestamp.value) {
@@ -508,7 +508,7 @@ async function checkAndExecuteScheduledActions() {
 onMounted(() => {
   clockInterval = setInterval(() => {
     clockNow.value = Date.now()
-  }, 60000)
+  }, 1000)
 
   timerCheckInterval = setInterval(() => {
     checkAndExecuteScheduledActions()

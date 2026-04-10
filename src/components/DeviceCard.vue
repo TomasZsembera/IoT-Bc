@@ -28,8 +28,6 @@ const emit = defineEmits(['toggle', 'brightness-change', 'set-timer', 'cancel-ti
 
 const showTimerConfig = ref(false)
 const timerMinutes = ref(5)
-const timerAction = ref('toggle')
-const timerBrightness = ref(50)
 
 function formatUpdatedAt(timestamp) {
   if (!timestamp) {
@@ -55,16 +53,10 @@ function handleSetTimer() {
     return
   }
 
-  const payload = {
-    action: timerAction.value,
+  emit('set-timer', {
+    action: 'toggle',
     durationMs: minutes * 60000,
-  }
-
-  if (timerAction.value === 'brightness') {
-    payload.brightness = Number(timerBrightness.value)
-  }
-
-  emit('set-timer', payload)
+  })
   showTimerConfig.value = false
 }
 
@@ -113,7 +105,7 @@ function handleCancelTimer() {
     </button>
     <details class="timer-section">
       <summary class="timer-summary">
-        <span>⏲️ Časovač</span>
+        <span>⏲️ Prepnúť stav</span>
         <span v-if="timer" class="timer-badge">
           {{ formatTimeRemaining(timer.remainingMs) }}
         </span>
@@ -143,34 +135,7 @@ function handleCancelTimer() {
             />
           </label>
 
-          <label for="timer-action-{{ deviceId }}">
-            <span>Akcia:</span>
-            <select
-              :id="`timer-action-${deviceId}`"
-              v-model="timerAction"
-              :disabled="busy || disabled"
-            >
-              <option value="toggle">Prepnúť stav ({{ device.isOn ? 'Vypnúť' : 'Zapnúť' }})</option>
-              <option value="on">Zapnúť</option>
-              <option value="off">Vypnúť</option>
-              <option v-if="device.supportsBrightness" value="brightness">Nastaviť jas</option>
-            </select>
-          </label>
 
-          <label v-if="timerAction === 'brightness' && device.supportsBrightness" for="timer-brightness-{{ deviceId }}">
-            <span>Jas (%):</span>
-            <div class="brightness-input-row">
-              <input
-                :id="`timer-brightness-${deviceId}`"
-                v-model.number="timerBrightness"
-                type="range"
-                min="0"
-                max="100"
-                :disabled="busy || disabled"
-              />
-              <strong>{{ timerBrightness }}%</strong>
-            </div>
-          </label>
 
           <button
             class="primary-btn"
