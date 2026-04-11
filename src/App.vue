@@ -268,20 +268,23 @@ function buildMonthlySeries(rawEntries) {
   const totalsByDay = new Map()
   let totalKwh30d = 0
 
-  Object.values(rawEntries || {}).forEach((entry) => {
-    const timestamp = Number(entry?.timestamp)
-    if (!Number.isFinite(timestamp)) {
-      return
-    }
+  // Konvertuj na array a zoraď podľa timestamp
+  const sortedEntries = Object.values(rawEntries || {})
+    .filter(e => Number.isFinite(Number(e?.timestamp)))
+    .sort((a, b) => a.timestamp - b.timestamp)
 
-    const kwh = getConsumptionValue(entry)
-    if (kwh <= 0) {
-      return
-    }
+  // Počítaj deltu (rozdiel) medzi po sebe idúcimi záznamami
+  for (let i = 1; i < sortedEntries.length; i++) {
+    const currentKwh = getConsumptionValue(sortedEntries[i])
+    const prevKwh = getConsumptionValue(sortedEntries[i - 1])
+    const delta = Math.max(0, currentKwh - prevKwh) // Delta, nie absolútna hodnota
+    
+    if (delta <= 0) continue
 
+    const timestamp = Number(sortedEntries[i]?.timestamp)
     const dateKey = formatDateKey(timestamp)
-    totalsByDay.set(dateKey, (totalsByDay.get(dateKey) || 0) + kwh)
-  })
+    totalsByDay.set(dateKey, (totalsByDay.get(dateKey) || 0) + delta)
+  }
 
   const labels = []
   const values = []
