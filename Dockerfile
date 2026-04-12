@@ -1,20 +1,24 @@
 # Build stage
-FROM node:24 AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 
 COPY . .
 
 RUN npm run build
 
 # Production stage
-FROM nginx:alpine
+FROM node:24-alpine
 
-COPY --from=builder /app/dist /usr/share/nginx/html
+WORKDIR /app
 
-EXPOSE 80
+RUN npm install -g serve
 
-CMD ["nginx", "-g", "daemon off;"]
+COPY --from=builder /app/dist ./dist
+
+EXPOSE 8080
+
+CMD ["sh", "-c", "serve -s dist -l ${PORT:-8080}"]
