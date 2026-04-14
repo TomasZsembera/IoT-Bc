@@ -363,7 +363,11 @@ async function toggleDevice(deviceId) {
 
   if (useMockData) {
     const nextState = !devices[deviceId].isOn
-    const nextBrightness = nextState && devices[deviceId].supportsBrightness && devices[deviceId].brightness === 0 ? 60 : devices[deviceId].brightness
+    const nextBrightness = !devices[deviceId].supportsBrightness
+      ? devices[deviceId].brightness
+      : nextState
+        ? (devices[deviceId].brightness === 0 ? 60 : devices[deviceId].brightness)
+        : 0
 
     updateDeviceState(deviceId, {
       isOn: nextState,
@@ -382,8 +386,12 @@ async function toggleDevice(deviceId) {
       updatedAt: Date.now(),
     }
 
-    if (next && devices[deviceId].supportsBrightness && devices[deviceId].brightness === 0) {
-      payload.brightness = 60
+    if (devices[deviceId].supportsBrightness) {
+      if (!next) {
+        payload.brightness = 0
+      } else if (devices[deviceId].brightness === 0) {
+        payload.brightness = 60
+      }
     }
 
     await update(dbRef(db, `devices/${deviceId}`), payload)

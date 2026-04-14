@@ -88,13 +88,13 @@ function handleCancelTimer() {
       <div class="brightness-row">
         <input
           :id="`brightness-${deviceId}`"
-          :disabled="busy || disabled"
+          :disabled="busy || disabled || !device.isOn"
           :value="device.brightness"
           class="brightness-slider"
           max="100"
           min="0"
           type="range"
-          @input="!disabled && $emit('brightness-change', Number($event.target.value))"
+          @input="device.isOn && !disabled && $emit('brightness-change', Number($event.target.value))"
         />
         <strong>{{ Number(device.brightness || 0).toFixed(0) }}%</strong>
       </div>
